@@ -110,8 +110,6 @@ homebrew_casks:
             end
           end
     caveats: "ida-mcp requires IDA Pro 9.2+ to be installed."
-    # Skip upload for prereleases
-    skip_upload: auto
 
 # Generate source archive
 source:
