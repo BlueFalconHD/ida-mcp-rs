@@ -46,6 +46,26 @@ where
         &self,
         context: ToolCallContext<'_, S>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        let name = context.name().to_string();
+        let is_enabled = {
+            let enabled = match self.enabled.lock() {
+                Ok(guard) => guard,
+                Err(guard) => guard.into_inner(),
+            };
+            enabled.is_enabled(&name)
+        };
+        if !is_enabled {
+            let hint = if let Some(tool) = tool_registry::get_tool(&name) {
+                format!(
+                    "Call enable_tools(categories=[\"{}\"]) or enable_tools(tools=[\"{}\"]).",
+                    tool.category.as_str(),
+                    tool.name
+                )
+            } else {
+                "Use tool_catalog to discover available tools.".to_string()
+            };
+            return Ok(ToolError::ToolDisabled { name, hint }.to_tool_result());
+        }
         self.call_router.call(context).await
     }
 
@@ -268,6 +288,7 @@ impl IdaMcpServer {
         its DWARF debug info is loaded automatically. \
         Set load_debug_info=true to force loading external debug info after open \
         (optionally specify debug_info_path). \
+        Use auto_enable to enable tool categories after open (e.g., disassembly, xrefs). \
         NOTE: Opening large databases (like dyld_shared_cache) can take 30+ seconds. \
         The database stays open until close_idb is called, so you can make multiple \
         queries (list_functions, disasm, decompile, etc.) without reopening."
@@ -276,12 +297,33 @@ impl IdaMcpServer {
     async fn open_idb(
         &self,
         Parameters(req): Parameters<OpenIdbRequest>,
+        ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         debug!("Tool call: open_idb");
         // Validate path (prevent directory traversal, check extension)
         if !Self::validate_path(&req.path) {
             return Ok(ToolError::InvalidPath(req.path).to_tool_result());
         }
+
+        let auto_enable_categories = match req.auto_enable {
+            Some(v) => match Self::value_to_strings(&v) {
+                Ok(items) => {
+                    let mut categories = Vec::with_capacity(items.len());
+                    for item in items {
+                        let cat = match item.parse::<ToolCategory>() {
+                            Ok(cat) => cat,
+                            Err(_) => {
+                                return Ok(ToolError::InvalidToolCategory(item).to_tool_result())
+                            }
+                        };
+                        categories.push(cat);
+                    }
+                    categories
+                }
+                Err(e) => return Ok(e.to_tool_result()),
+            },
+            None => Vec::new(),
+        };
 
         match self
             .worker
@@ -293,9 +335,98 @@ impl IdaMcpServer {
             )
             .await
         {
-            Ok(info) => Ok(CallToolResult::success(vec![Content::text(
-                serde_json::to_string_pretty(&info).unwrap_or_else(|_| format!("{:?}", info)),
-            )])),
+            Ok(info) => {
+                let mut auto_enabled = Vec::new();
+                if !auto_enable_categories.is_empty() {
+                    let (changed, total_enabled, enabled_categories) = {
+                        let enabled = self.tool_mux.enabled();
+                        let mut enabled = match enabled.lock() {
+                            Ok(g) => g,
+                            Err(g) => g.into_inner(),
+                        };
+
+                        for cat in &auto_enable_categories {
+                            if enabled.enable_category(*cat) {
+                                auto_enabled.push(cat.as_str());
+                            }
+                        }
+
+                        let changed = !auto_enabled.is_empty();
+                        let total_enabled = enabled.enabled_count();
+                        let mut enabled_categories: Vec<_> =
+                            enabled.enabled_categories().map(|c| c.as_str()).collect();
+                        enabled_categories.sort_unstable();
+                        (changed, total_enabled, enabled_categories)
+                    };
+
+                    if changed {
+                        let _ = ctx.peer.notify_tool_list_changed().await;
+                    }
+
+                    let mut value = match serde_json::to_value(&info) {
+                        Ok(v) => v,
+                        Err(_) => {
+                            return Ok(CallToolResult::success(vec![Content::text(format!(
+                                "{info:?}"
+                            ))]))
+                        }
+                    };
+                    if let Value::Object(map) = &mut value {
+                        map.insert(
+                            "quick_tools".to_string(),
+                            json!([
+                                "list_functions",
+                                "resolve_function",
+                                "disasm_by_name",
+                                "decompile",
+                                "xrefs_to",
+                                "strings"
+                            ]),
+                        );
+                        map.insert(
+                            "enable_hint".to_string(),
+                            json!("Call enable_tools(categories=[\"disassembly\",\"xrefs\",\"decompile\"]) to expose common analysis tools in tools/list."),
+                        );
+                        map.insert("auto_enabled_categories".to_string(), json!(auto_enabled));
+                        map.insert("enabled_categories".to_string(), json!(enabled_categories));
+                        map.insert("total_enabled".to_string(), json!(total_enabled));
+                    }
+
+                    return Ok(CallToolResult::success(vec![Content::text(
+                        serde_json::to_string_pretty(&value)
+                            .unwrap_or_else(|_| format!("{value:?}")),
+                    )]));
+                }
+
+                let mut value = match serde_json::to_value(&info) {
+                    Ok(v) => v,
+                    Err(_) => {
+                        return Ok(CallToolResult::success(vec![Content::text(format!(
+                            "{info:?}"
+                        ))]))
+                    }
+                };
+                if let Value::Object(map) = &mut value {
+                    map.insert(
+                        "quick_tools".to_string(),
+                        json!([
+                            "list_functions",
+                            "resolve_function",
+                            "disasm_by_name",
+                            "decompile",
+                            "xrefs_to",
+                            "strings"
+                        ]),
+                    );
+                    map.insert(
+                        "enable_hint".to_string(),
+                        json!("Call enable_tools(categories=[\"disassembly\",\"xrefs\",\"decompile\"]) to expose common analysis tools in tools/list."),
+                    );
+                }
+                Ok(CallToolResult::success(vec![Content::text(
+                    serde_json::to_string_pretty(&value).unwrap_or_else(|_| format!("{value:?}")),
+                )]))
+            }
             Err(e) => Ok(e.to_tool_result()),
         }
     }
@@ -317,6 +448,19 @@ impl IdaMcpServer {
         {
             Ok(info) => Ok(CallToolResult::success(vec![Content::text(
                 serde_json::to_string_pretty(&info).unwrap_or_else(|_| format!("{info:?}")),
+            )])),
+            Err(e) => Ok(e.to_tool_result()),
+        }
+    }
+
+    #[tool(description = "Report auto-analysis status (auto_is_ok, auto_state). \
+        Use this to check whether analysis-dependent tools (xrefs, decompile) are fully ready.")]
+    #[instrument(skip(self))]
+    async fn analysis_status(&self) -> Result<CallToolResult, McpError> {
+        debug!("Tool call: analysis_status");
+        match self.worker.analysis_status().await {
+            Ok(status) => Ok(CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&status).unwrap_or_else(|_| format!("{status:?}")),
             )])),
             Err(e) => Ok(e.to_tool_result()),
         }
@@ -614,6 +758,56 @@ impl IdaMcpServer {
         }
     }
 
+    #[tool(description = "Get address context (segment, function, nearest symbol)")]
+    async fn addr_info(
+        &self,
+        Parameters(req): Parameters<AddrInfoRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let addr = match req.address.as_ref() {
+            Some(val) => match Self::value_to_single_address(val) {
+                Ok(v) => Some(v),
+                Err(e) => return Ok(e.to_tool_result()),
+            },
+            None => None,
+        };
+        let offset = req.offset.unwrap_or(0);
+        match self
+            .worker
+            .addr_info(addr, req.target_name.clone(), offset)
+            .await
+        {
+            Ok(info) => Ok(CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&info).unwrap_or_else(|_| format!("{:?}", info)),
+            )])),
+            Err(e) => Ok(e.to_tool_result()),
+        }
+    }
+
+    #[tool(description = "Get the function that contains an address")]
+    async fn function_at(
+        &self,
+        Parameters(req): Parameters<FunctionAtRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let addr = match req.address.as_ref() {
+            Some(val) => match Self::value_to_single_address(val) {
+                Ok(v) => Some(v),
+                Err(e) => return Ok(e.to_tool_result()),
+            },
+            None => None,
+        };
+        let offset = req.offset.unwrap_or(0);
+        match self
+            .worker
+            .function_at(addr, req.target_name.clone(), offset)
+            .await
+        {
+            Ok(info) => Ok(CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&info).unwrap_or_else(|_| format!("{:?}", info)),
+            )])),
+            Err(e) => Ok(e.to_tool_result()),
+        }
+    }
+
     #[tool(description = "Get disassembly at an address")]
     #[instrument(skip(self), fields(address = %req.address, count = req.count))]
     async fn disasm(
@@ -664,6 +858,30 @@ impl IdaMcpServer {
         let count = req.count.unwrap_or(10).min(1000);
 
         match self.worker.disasm_by_name(&req.name, count).await {
+            Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
+            Err(e) => Ok(e.to_tool_result()),
+        }
+    }
+
+    #[tool(description = "Disassemble the function containing an address")]
+    async fn disasm_function_at(
+        &self,
+        Parameters(req): Parameters<DisasmFunctionAtRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let addr = match req.address.as_ref() {
+            Some(val) => match Self::value_to_single_address(val) {
+                Ok(v) => Some(v),
+                Err(e) => return Ok(e.to_tool_result()),
+            },
+            None => None,
+        };
+        let offset = req.offset.unwrap_or(0);
+        let count = req.count.unwrap_or(200).min(5000);
+        match self
+            .worker
+            .disasm_function_at(addr, req.target_name.clone(), offset, count)
+            .await
+        {
             Ok(text) => Ok(CallToolResult::success(vec![Content::text(text)])),
             Err(e) => Ok(e.to_tool_result()),
         }
@@ -790,6 +1008,68 @@ impl IdaMcpServer {
         match self
             .worker
             .strings(offset, limit, req.filter, req.timeout_secs)
+            .await
+        {
+            Ok(result) => Ok(CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&result).unwrap_or_else(|_| format!("{:?}", result)),
+            )])),
+            Err(e) => Ok(e.to_tool_result()),
+        }
+    }
+
+    #[tool(
+        description = "Find strings matching a query (supports exact/case-insensitive options). \
+        For large databases, consider setting timeout_secs (default: 120, max: 600)."
+    )]
+    async fn find_string(
+        &self,
+        Parameters(req): Parameters<FindStringRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let limit = req.limit.unwrap_or(100).min(10000);
+        let offset = req.offset.unwrap_or(0);
+        let exact = req.exact.unwrap_or(false);
+        let case_insensitive = req.case_insensitive.unwrap_or(true);
+        match self
+            .worker
+            .find_string(
+                req.query.clone(),
+                exact,
+                case_insensitive,
+                offset,
+                limit,
+                req.timeout_secs,
+            )
+            .await
+        {
+            Ok(result) => Ok(CallToolResult::success(vec![Content::text(
+                serde_json::to_string_pretty(&result).unwrap_or_else(|_| format!("{:?}", result)),
+            )])),
+            Err(e) => Ok(e.to_tool_result()),
+        }
+    }
+
+    #[tool(description = "Find strings and return xrefs to each match. \
+        For large databases, consider setting timeout_secs (default: 120, max: 600).")]
+    async fn xrefs_to_string(
+        &self,
+        Parameters(req): Parameters<XrefsToStringRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let limit = req.limit.unwrap_or(100).min(10000);
+        let offset = req.offset.unwrap_or(0);
+        let exact = req.exact.unwrap_or(false);
+        let case_insensitive = req.case_insensitive.unwrap_or(true);
+        let max_xrefs = req.max_xrefs.unwrap_or(64);
+        match self
+            .worker
+            .xrefs_to_string(
+                req.query.clone(),
+                exact,
+                case_insensitive,
+                offset,
+                limit,
+                max_xrefs,
+                req.timeout_secs,
+            )
             .await
         {
             Ok(result) => Ok(CallToolResult::success(vec![Content::text(
@@ -2200,6 +2480,7 @@ fn tool_params_schema(name: &str) -> Option<Value> {
         "open_idb" => Some(schema::<OpenIdbRequest>()),
         "close_idb" => Some(schema::<EmptyParams>()),
         "load_debug_info" => Some(schema::<LoadDebugInfoRequest>()),
+        "analysis_status" => Some(schema::<EmptyParams>()),
         "tool_catalog" => Some(schema::<ToolCatalogRequest>()),
         "tool_help" => Some(schema::<ToolHelpRequest>()),
         "enable_tools" => Some(schema::<EnableToolsRequest>()),
@@ -2208,12 +2489,15 @@ fn tool_params_schema(name: &str) -> Option<Value> {
         // Functions
         "list_functions" | "list_funcs" => Some(schema::<ListFunctionsRequest>()),
         "resolve_function" => Some(schema::<ResolveFunctionRequest>()),
+        "addr_info" => Some(schema::<AddrInfoRequest>()),
+        "function_at" => Some(schema::<FunctionAtRequest>()),
         "lookup_funcs" => Some(schema::<LookupFuncsRequest>()),
         "analyze_funcs" => Some(schema::<AnalyzeFuncsRequest>()),
 
         // Disassembly / Decompile
         "disasm" => Some(schema::<DisasmRequest>()),
         "disasm_by_name" => Some(schema::<DisasmByNameRequest>()),
+        "disasm_function_at" => Some(schema::<DisasmFunctionAtRequest>()),
         "decompile" => Some(schema::<DecompileRequest>()),
         "pseudocode_at" => Some(schema::<PseudocodeAtRequest>()),
 
@@ -2230,7 +2514,9 @@ fn tool_params_schema(name: &str) -> Option<Value> {
         "get_u8" | "get_u16" | "get_u32" | "get_u64" => Some(schema::<AddressRequest>()),
         "get_global_value" => Some(schema::<GetGlobalValueRequest>()),
         "strings" => Some(schema::<StringsRequest>()),
+        "find_string" => Some(schema::<FindStringRequest>()),
         "analyze_strings" => Some(schema::<AnalyzeStringsRequest>()),
+        "xrefs_to_string" => Some(schema::<XrefsToStringRequest>()),
         "find_bytes" => Some(schema::<FindBytesRequest>()),
         "search" => Some(schema::<SearchRequest>()),
         "find_insns" => Some(schema::<FindInsnsRequest>()),
@@ -2284,7 +2570,7 @@ impl ServerHandler for IdaMcpServer {
                  \n4. Use the discovered tools to analyze the binary \
                  \n5. close_idb: Optionally close when done \
                  \n\nNote: tools/list is intentionally minimal; use tool_catalog to discover the full tool set, \
-                 and enable_tools to expand tools/list. \
+                 and enable_tools to expand tools/list. Tools that are not enabled will return ToolDisabled. \
                  \n\nTool Categories: \
                  \n- core: open/close/discover (open_idb, close_idb, tool_catalog, tool_help, enable_tools, idb_meta) \
                  \n- functions: list, resolve, lookup functions \
@@ -2297,7 +2583,8 @@ impl ServerHandler for IdaMcpServer {
                  \n- metadata: segments, imports, exports \
                  \n- types: declare_type, apply_types (addr/stack), infer_types, local_types, stack_frame, declare_stack, delete_stack, structs (list/info/read) \
                 \n- editing: comments/rename/patch/patch_asm \
-                 \n\nTip: Use tool_catalog(query='what you want to do') to find the right tool."
+                 \n\nTip: Use tool_catalog(query='what you want to do') to find the right tool. \
+                 \nTip: If xrefs/decompile look incomplete, call analysis_status to check auto-analysis."
                     .to_string(),
             ),
             ..Default::default()

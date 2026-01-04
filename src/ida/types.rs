@@ -11,6 +11,7 @@ pub struct DbInfo {
     pub bits: u32,
     pub function_count: usize,
     pub debug_info: Option<DebugInfoLoad>,
+    pub analysis_status: AnalysisStatus,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -18,6 +19,42 @@ pub struct DebugInfoLoad {
     pub path: String,
     pub loaded: bool,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AnalysisStatus {
+    pub auto_enabled: bool,
+    pub auto_is_ok: bool,
+    pub auto_state: String,
+    pub auto_state_id: i32,
+    pub analysis_running: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SymbolInfo {
+    pub name: String,
+    pub address: String,
+    pub delta: i64,
+    pub exact: bool,
+    pub is_public: bool,
+    pub is_weak: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FunctionRangeInfo {
+    pub address: String,
+    pub name: String,
+    pub start: String,
+    pub end: String,
+    pub size: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AddressInfo {
+    pub address: String,
+    pub segment: Option<SegmentInfo>,
+    pub function: Option<FunctionRangeInfo>,
+    pub symbol: Option<SymbolInfo>,
 }
 
 /// Function info for listing
@@ -61,6 +98,23 @@ pub struct StringInfo {
 #[derive(Debug, Clone, Serialize)]
 pub struct StringListResult {
     pub strings: Vec<StringInfo>,
+    pub total: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub next_offset: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StringXrefInfo {
+    pub address: String,
+    pub content: String,
+    pub length: usize,
+    pub xrefs: Vec<String>,
+    pub xref_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct StringXrefsResult {
+    pub strings: Vec<StringXrefInfo>,
     pub total: usize,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_offset: Option<usize>,

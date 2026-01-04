@@ -82,6 +82,13 @@ impl IdaWorker {
         rx.await?
     }
 
+    /// Report current auto-analysis status.
+    pub async fn analysis_status(&self) -> Result<AnalysisStatus, ToolError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx.send(IdaRequest::AnalysisStatus { resp: tx })?;
+        rx.await?
+    }
+
     /// Shutdown the IDA worker loop.
     pub fn shutdown(&self) -> Result<(), ToolError> {
         self.tx.send(IdaRequest::Shutdown)?;
@@ -251,6 +258,59 @@ impl IdaWorker {
             addr,
             name,
             offset,
+            resp: tx,
+        })?;
+        rx.await?
+    }
+
+    /// Get address context (segment, function, symbol).
+    pub async fn addr_info(
+        &self,
+        addr: Option<u64>,
+        name: Option<String>,
+        offset: u64,
+    ) -> Result<AddressInfo, ToolError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx.send(IdaRequest::AddrInfo {
+            addr,
+            name,
+            offset,
+            resp: tx,
+        })?;
+        rx.await?
+    }
+
+    /// Get function containing an address.
+    pub async fn function_at(
+        &self,
+        addr: Option<u64>,
+        name: Option<String>,
+        offset: u64,
+    ) -> Result<FunctionRangeInfo, ToolError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx.send(IdaRequest::FunctionAt {
+            addr,
+            name,
+            offset,
+            resp: tx,
+        })?;
+        rx.await?
+    }
+
+    /// Disassemble the function containing an address.
+    pub async fn disasm_function_at(
+        &self,
+        addr: Option<u64>,
+        name: Option<String>,
+        offset: u64,
+        count: usize,
+    ) -> Result<String, ToolError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx.send(IdaRequest::DisasmFunctionAt {
+            addr,
+            name,
+            offset,
+            count,
             resp: tx,
         })?;
         rx.await?
@@ -583,6 +643,53 @@ impl IdaWorker {
             query,
             offset,
             limit,
+            resp: tx,
+        })?;
+        Self::recv_with_timeout(rx, timeout_secs).await
+    }
+
+    /// Find strings matching a query.
+    pub async fn find_string(
+        &self,
+        query: String,
+        exact: bool,
+        case_insensitive: bool,
+        offset: usize,
+        limit: usize,
+        timeout_secs: Option<u64>,
+    ) -> Result<StringListResult, ToolError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx.send(IdaRequest::FindString {
+            query,
+            exact,
+            case_insensitive,
+            offset,
+            limit,
+            resp: tx,
+        })?;
+        Self::recv_with_timeout(rx, timeout_secs).await
+    }
+
+    /// Get xrefs to strings matching a query.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn xrefs_to_string(
+        &self,
+        query: String,
+        exact: bool,
+        case_insensitive: bool,
+        offset: usize,
+        limit: usize,
+        max_xrefs: usize,
+        timeout_secs: Option<u64>,
+    ) -> Result<StringXrefsResult, ToolError> {
+        let (tx, rx) = oneshot::channel();
+        self.tx.send(IdaRequest::XrefsToString {
+            query,
+            exact,
+            case_insensitive,
+            offset,
+            limit,
+            max_xrefs,
             resp: tx,
         })?;
         Self::recv_with_timeout(rx, timeout_secs).await

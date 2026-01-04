@@ -99,13 +99,13 @@ echo "$list_resp" | grep -q '"enable_tools"' || {
   exit 1
 }
 
-# enable_tools for xrefs
+# enable_tools for xrefs + functions
 curl -sS \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
   -H "Origin: $ORIGIN" \
   -H "Mcp-Session-Id: $session_id" \
-  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"enable_tools","arguments":{"categories":["xrefs"]}}}' \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"enable_tools","arguments":{"categories":["xrefs","functions"]}}}' \
   "http://127.0.0.1:$PORT/" >/dev/null
 
 # tools/list should now include xrefs_to

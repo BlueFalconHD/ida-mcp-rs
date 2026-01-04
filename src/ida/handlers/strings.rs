@@ -2,7 +2,7 @@
 
 use crate::error::ToolError;
 use crate::ida::handlers::hex_encode;
-use crate::ida::types::{StringInfo, StringListResult};
+use crate::ida::types::{StringInfo, StringListResult, StringXrefInfo, StringXrefsResult};
 use idalib::xref::XRefQuery;
 use idalib::IDB;
 use serde_json::{json, Value};
@@ -129,4 +129,141 @@ pub fn handle_get_string(idb: &Option<IDB>, addr: u64, max_len: usize) -> Result
         "length": len,
         "bytes": hex_encode(&bytes[..len]),
     }))
+}
+
+pub fn handle_find_string(
+    idb: &Option<IDB>,
+    query: &str,
+    exact: bool,
+    case_insensitive: bool,
+    offset: usize,
+    limit: usize,
+) -> Result<StringListResult, ToolError> {
+    let db = idb.as_ref().ok_or(ToolError::NoDatabaseOpen)?;
+    let query_norm = if case_insensitive {
+        query.to_lowercase()
+    } else {
+        query.to_string()
+    };
+
+    let mut total = 0usize;
+    let mut strings = Vec::new();
+
+    for (addr, content) in db.strings().iter() {
+        let hay = if case_insensitive {
+            content.to_lowercase()
+        } else {
+            content.clone()
+        };
+        let matched = if exact {
+            hay == query_norm
+        } else {
+            hay.contains(&query_norm)
+        };
+        if !matched {
+            continue;
+        }
+
+        total += 1;
+        if total <= offset {
+            continue;
+        }
+        if strings.len() >= limit {
+            continue;
+        }
+
+        strings.push(StringInfo {
+            address: format!("{:#x}", addr),
+            content: content.clone(),
+            length: content.len(),
+        });
+    }
+
+    let next_offset = if offset.saturating_add(strings.len()) < total {
+        Some(offset.saturating_add(strings.len()))
+    } else {
+        None
+    };
+
+    Ok(StringListResult {
+        strings,
+        total,
+        next_offset,
+    })
+}
+
+pub fn handle_xrefs_to_string(
+    idb: &Option<IDB>,
+    query: &str,
+    exact: bool,
+    case_insensitive: bool,
+    offset: usize,
+    limit: usize,
+    max_xrefs: usize,
+) -> Result<StringXrefsResult, ToolError> {
+    let db = idb.as_ref().ok_or(ToolError::NoDatabaseOpen)?;
+    let query_norm = if case_insensitive {
+        query.to_lowercase()
+    } else {
+        query.to_string()
+    };
+
+    let mut total = 0usize;
+    let mut strings = Vec::new();
+    let max_xrefs = max_xrefs.clamp(1, 1024);
+
+    for (addr, content) in db.strings().iter() {
+        let hay = if case_insensitive {
+            content.to_lowercase()
+        } else {
+            content.clone()
+        };
+        let matched = if exact {
+            hay == query_norm
+        } else {
+            hay.contains(&query_norm)
+        };
+        if !matched {
+            continue;
+        }
+
+        total += 1;
+        if total <= offset {
+            continue;
+        }
+        if strings.len() >= limit {
+            continue;
+        }
+
+        let mut xrefs = Vec::new();
+        let mut current = db.first_xref_to(addr, XRefQuery::ALL);
+        while let Some(xref) = current {
+            xrefs.push(format!("{:#x}", xref.from()));
+            if xrefs.len() >= max_xrefs {
+                break;
+            }
+            current = xref.next_to();
+        }
+
+        let xref_count = xrefs.len();
+        strings.push(StringXrefInfo {
+            address: format!("{:#x}", addr),
+            content: content.clone(),
+            length: content.len(),
+            xrefs,
+            xref_count,
+        });
+    }
+
+    let next_offset = if offset.saturating_add(strings.len()) < total {
+        Some(offset.saturating_add(strings.len()))
+    } else {
+        None
+    };
+
+    Ok(StringXrefsResult {
+        strings,
+        total,
+        next_offset,
+    })
 }

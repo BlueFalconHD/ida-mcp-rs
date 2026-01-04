@@ -14,6 +14,10 @@ pub struct OpenIdbRequest {
     #[serde(alias = "load_dsym")]
     pub load_debug_info: Option<bool>,
     #[schemars(
+        description = "Auto-enable tool categories after open (e.g., [\"disassembly\",\"xrefs\"])."
+    )]
+    pub auto_enable: Option<Value>,
+    #[schemars(
         description = "Optional debug info path (dSYM DWARF). If omitted, tries sibling .dSYM"
     )]
     #[serde(alias = "dsym_path")]
@@ -62,6 +66,44 @@ pub struct ResolveFunctionRequest {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+pub struct AddrInfoRequest {
+    #[schemars(description = "Address (string/number)")]
+    #[serde(alias = "ea", alias = "addr", alias = "addresses")]
+    pub address: Option<Value>,
+    #[schemars(description = "Function or symbol name (alternative to address)")]
+    #[serde(alias = "name", alias = "symbol")]
+    pub target_name: Option<String>,
+    #[schemars(description = "Offset added to resolved name address (default: 0)")]
+    pub offset: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FunctionAtRequest {
+    #[schemars(description = "Address (string/number)")]
+    #[serde(alias = "ea", alias = "addr", alias = "addresses")]
+    pub address: Option<Value>,
+    #[schemars(description = "Function or symbol name (alternative to address)")]
+    #[serde(alias = "name", alias = "symbol")]
+    pub target_name: Option<String>,
+    #[schemars(description = "Offset added to resolved name address (default: 0)")]
+    pub offset: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct DisasmFunctionAtRequest {
+    #[schemars(description = "Address (string/number)")]
+    #[serde(alias = "ea", alias = "addr", alias = "addresses")]
+    pub address: Option<Value>,
+    #[schemars(description = "Function or symbol name (alternative to address)")]
+    #[serde(alias = "name", alias = "symbol")]
+    pub target_name: Option<String>,
+    #[schemars(description = "Offset added to resolved name address (default: 0)")]
+    pub offset: Option<u64>,
+    #[schemars(description = "Number of instructions (1-5000, default: 200)")]
+    pub count: Option<usize>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 pub struct DisasmRequest {
     #[schemars(description = "Address(es) to disassemble (string/number or array)")]
     #[serde(alias = "addrs", alias = "addr", alias = "addresses")]
@@ -95,6 +137,42 @@ pub struct StringsRequest {
     #[schemars(description = "Optional filter - only return strings containing this text")]
     #[serde(alias = "query")]
     pub filter: Option<String>,
+    #[schemars(description = "Timeout in seconds for this operation (default: 120, max: 600)")]
+    pub timeout_secs: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct FindStringRequest {
+    #[schemars(description = "String to search for")]
+    pub query: String,
+    #[schemars(description = "Exact match (default: false)")]
+    pub exact: Option<bool>,
+    #[schemars(description = "Case-insensitive match (default: true)")]
+    pub case_insensitive: Option<bool>,
+    #[schemars(description = "Offset for pagination (default: 0)")]
+    pub offset: Option<usize>,
+    #[schemars(description = "Maximum strings to return (1-10000, default: 100)")]
+    #[serde(alias = "count")]
+    pub limit: Option<usize>,
+    #[schemars(description = "Timeout in seconds for this operation (default: 120, max: 600)")]
+    pub timeout_secs: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+pub struct XrefsToStringRequest {
+    #[schemars(description = "String to search for")]
+    pub query: String,
+    #[schemars(description = "Exact match (default: false)")]
+    pub exact: Option<bool>,
+    #[schemars(description = "Case-insensitive match (default: true)")]
+    pub case_insensitive: Option<bool>,
+    #[schemars(description = "Offset for pagination (default: 0)")]
+    pub offset: Option<usize>,
+    #[schemars(description = "Maximum strings to return (1-10000, default: 100)")]
+    #[serde(alias = "count")]
+    pub limit: Option<usize>,
+    #[schemars(description = "Maximum xrefs per string (default: 64, max: 1024)")]
+    pub max_xrefs: Option<usize>,
     #[schemars(description = "Timeout in seconds for this operation (default: 120, max: 600)")]
     pub timeout_secs: Option<u64>,
 }

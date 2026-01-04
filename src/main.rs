@@ -433,6 +433,7 @@ fn run_probe(args: ProbeArgs) -> anyhow::Result<()> {
         },
         function_count: db.function_count(),
         debug_info: None,
+        analysis_status: ida::handlers::analysis::build_analysis_status(&db),
     };
     info!("Database opened in {}s", open_start.elapsed().as_secs());
     println!("{}", serde_json::to_string_pretty(&info)?);

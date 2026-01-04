@@ -1,8 +1,9 @@
 //! Main IDA worker loop.
 
+use crate::ida::handlers::resolve_address;
 use crate::ida::handlers::{
-    annotations, controlflow, database, disasm, functions, globals, imports, memory, search,
-    segments, strings, structs, types, xrefs,
+    address, analysis, annotations, controlflow, database, disasm, functions, globals, imports,
+    memory, search, segments, strings, structs, types, xrefs,
 };
 use crate::ida::lock::release_mcp_lock;
 use crate::ida::request::IdaRequest;
@@ -71,6 +72,20 @@ pub fn run_ida_loop_no_init(rx: mpsc::Receiver<IdaRequest>) {
                 match &result {
                     Ok(v) => debug!(result = %v, "Loaded debug info"),
                     Err(e) => warn!(error = %e, "Failed to load debug info"),
+                }
+                let _ = resp.send(result);
+            }
+            IdaRequest::AnalysisStatus { resp } => {
+                debug!("Reporting analysis status");
+                let result = analysis::handle_analysis_status(&idb);
+                match &result {
+                    Ok(status) => debug!(
+                        auto_enabled = status.auto_enabled,
+                        auto_is_ok = status.auto_is_ok,
+                        auto_state = %status.auto_state,
+                        "Analysis status reported"
+                    ),
+                    Err(e) => warn!(error = %e, "Failed to report analysis status"),
                 }
                 let _ = resp.send(result);
             }
@@ -243,6 +258,59 @@ pub fn run_ida_loop_no_init(rx: mpsc::Receiver<IdaRequest>) {
                 match &result {
                     Ok(res) => debug!(code = res.code, "Inferred type"),
                     Err(e) => warn!(error = %e, "Failed to infer type"),
+                }
+                let _ = resp.send(result);
+            }
+            IdaRequest::AddrInfo {
+                addr,
+                name,
+                offset,
+                resp,
+            } => {
+                debug!(address = ?addr, name = ?name, offset, "Getting address info");
+                let resolved = resolve_address(&idb, addr, name.as_deref(), offset);
+                let result = resolved.and_then(|ea| address::handle_addr_info(&idb, ea));
+                match &result {
+                    Ok(_) => debug!("Got address info"),
+                    Err(e) => warn!(error = %e, "Failed to get address info"),
+                }
+                let _ = resp.send(result);
+            }
+            IdaRequest::FunctionAt {
+                addr,
+                name,
+                offset,
+                resp,
+            } => {
+                debug!(address = ?addr, name = ?name, offset, "Getting function at address");
+                let resolved = resolve_address(&idb, addr, name.as_deref(), offset);
+                let result = resolved.and_then(|ea| functions::handle_function_at(&idb, ea));
+                match &result {
+                    Ok(_) => debug!("Got function at address"),
+                    Err(e) => warn!(error = %e, "Failed to get function at address"),
+                }
+                let _ = resp.send(result);
+            }
+            IdaRequest::DisasmFunctionAt {
+                addr,
+                name,
+                offset,
+                count,
+                resp,
+            } => {
+                debug!(
+                    address = ?addr,
+                    name = ?name,
+                    offset,
+                    count,
+                    "Disassembling function at address"
+                );
+                let resolved = resolve_address(&idb, addr, name.as_deref(), offset);
+                let result =
+                    resolved.and_then(|ea| disasm::handle_disasm_function_at(&idb, ea, count));
+                match &result {
+                    Ok(_) => debug!("Disassembled function"),
+                    Err(e) => warn!(error = %e, "Failed to disassemble function"),
                 }
                 let _ = resp.send(result);
             }
@@ -625,6 +693,61 @@ pub fn run_ida_loop_no_init(rx: mpsc::Receiver<IdaRequest>) {
             } => {
                 debug!(offset, limit, query = ?query, "Analyzing strings");
                 let result = strings::handle_analyze_strings(&idb, query.as_deref(), offset, limit);
+                let _ = resp.send(result);
+            }
+            IdaRequest::FindString {
+                query,
+                exact,
+                case_insensitive,
+                offset,
+                limit,
+                resp,
+            } => {
+                debug!(
+                    query = %query,
+                    exact,
+                    case_insensitive,
+                    offset,
+                    limit,
+                    "Finding strings"
+                );
+                let result = strings::handle_find_string(
+                    &idb,
+                    &query,
+                    exact,
+                    case_insensitive,
+                    offset,
+                    limit,
+                );
+                let _ = resp.send(result);
+            }
+            IdaRequest::XrefsToString {
+                query,
+                exact,
+                case_insensitive,
+                offset,
+                limit,
+                max_xrefs,
+                resp,
+            } => {
+                debug!(
+                    query = %query,
+                    exact,
+                    case_insensitive,
+                    offset,
+                    limit,
+                    max_xrefs,
+                    "Getting xrefs to strings"
+                );
+                let result = strings::handle_xrefs_to_string(
+                    &idb,
+                    &query,
+                    exact,
+                    case_insensitive,
+                    offset,
+                    limit,
+                    max_xrefs,
+                );
                 let _ = resp.send(result);
             }
             IdaRequest::AnalyzeFuncs { resp } => {

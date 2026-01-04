@@ -12,7 +12,7 @@ make test-http  # HTTP/SSE integration test
 **Stdio test** (`make test`)
 - MCP protocol handshake
 - Tool discovery (`tool_catalog`, `tool_help`)
-- Database operations (`open_idb`, `close_idb`, `idb_meta`)
+- Database operations (`open_idb`, `close_idb`, `idb_meta`, `analysis_status`)
 - Analysis tools (`list_functions`, `resolve_function`, `disasm_by_name`, `find_insns`, `find_insn_operands`)
 - Editing tools (`set_comments`, `rename`, `patch`, `patch_asm`)
 - Types/stack tools (`declare_type`, `apply_types`, `infer_types`, `stack_frame`, `declare_stack`, `delete_stack`)

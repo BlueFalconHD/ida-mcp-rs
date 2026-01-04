@@ -1,6 +1,7 @@
 //! Database open/close handlers.
 
 use crate::error::ToolError;
+use crate::ida::handlers::analysis::build_analysis_status;
 use crate::ida::lock::{acquire_mcp_lock, detect_db_lock, release_mcp_lock_file};
 use crate::ida::types::{DbInfo, DebugInfoLoad};
 use idalib::{IDBOpenOptions, IDB};
@@ -90,6 +91,7 @@ pub fn handle_open(
                 bits,
                 function_count: db.function_count(),
                 debug_info: None,
+                analysis_status: build_analysis_status(db),
             });
         } else {
             // Different database - tell them to close first
@@ -291,6 +293,7 @@ pub fn handle_open(
         bits,
         function_count,
         debug_info,
+        analysis_status: build_analysis_status(&db),
     };
 
     let (lf, lp) = mcp_lock.into_parts();

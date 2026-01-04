@@ -7,6 +7,7 @@ ida-mcp is a headless IDA Pro MCP server with a discovery-first tool model.
 - **Minimal default tool list** - Reduces context bloat for AI agents
 - **Tool discovery** - Use `tool_catalog` to find tools, `tool_help` for docs
 - **Dynamic expansion** - `enable_tools` expands what's visible in `tools/list`
+- **Enabled tool gating** - Disabled tools return `ToolDisabled` until enabled
 - **Streamable HTTP** - Multi-client support with streaming notifications
 - **Serialized IDA access** - All IDA work runs through a single worker thread
 

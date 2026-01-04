@@ -22,6 +22,9 @@ pub enum IdaRequest {
         verbose: bool,
         resp: oneshot::Sender<Result<Value, ToolError>>,
     },
+    AnalysisStatus {
+        resp: oneshot::Sender<Result<AnalysisStatus, ToolError>>,
+    },
     ListFunctions {
         offset: usize,
         limit: usize,
@@ -86,6 +89,25 @@ pub enum IdaRequest {
         name: Option<String>,
         offset: u64,
         resp: oneshot::Sender<Result<GuessTypeResult, ToolError>>,
+    },
+    AddrInfo {
+        addr: Option<u64>,
+        name: Option<String>,
+        offset: u64,
+        resp: oneshot::Sender<Result<AddressInfo, ToolError>>,
+    },
+    FunctionAt {
+        addr: Option<u64>,
+        name: Option<String>,
+        offset: u64,
+        resp: oneshot::Sender<Result<FunctionRangeInfo, ToolError>>,
+    },
+    DisasmFunctionAt {
+        addr: Option<u64>,
+        name: Option<String>,
+        offset: u64,
+        count: usize,
+        resp: oneshot::Sender<Result<String, ToolError>>,
     },
     DeclareStack {
         addr: Option<u64>,
@@ -219,6 +241,23 @@ pub enum IdaRequest {
         offset: usize,
         limit: usize,
         resp: oneshot::Sender<Result<Value, ToolError>>,
+    },
+    FindString {
+        query: String,
+        exact: bool,
+        case_insensitive: bool,
+        offset: usize,
+        limit: usize,
+        resp: oneshot::Sender<Result<StringListResult, ToolError>>,
+    },
+    XrefsToString {
+        query: String,
+        exact: bool,
+        case_insensitive: bool,
+        offset: usize,
+        limit: usize,
+        max_xrefs: usize,
+        resp: oneshot::Sender<Result<StringXrefsResult, ToolError>>,
     },
     AnalyzeFuncs {
         resp: oneshot::Sender<Result<Value, ToolError>>,

@@ -175,6 +175,16 @@ pub static TOOL_REGISTRY: &[ToolInfo] = &[
         keywords: &["debug", "dwarf", "dsym", "symbols", "load"],
     },
     ToolInfo {
+        name: "analysis_status",
+        category: ToolCategory::Core,
+        short_desc: "Report auto-analysis status",
+        full_desc: "Report auto-analysis status (auto_is_ok, auto_state) so clients can \
+                    determine whether analysis-dependent tools like xrefs or decompile are fully ready.",
+        example: r#"{}"#,
+        default: true,
+        keywords: &["analysis", "autoanalysis", "status", "xrefs", "decompile"],
+    },
+    ToolInfo {
         name: "close_idb",
         category: ToolCategory::Core,
         short_desc: "Close the current database",
@@ -262,6 +272,16 @@ pub static TOOL_REGISTRY: &[ToolInfo] = &[
         keywords: &["resolve", "find", "lookup", "function", "name", "address"],
     },
     ToolInfo {
+        name: "function_at",
+        category: ToolCategory::Functions,
+        short_desc: "Find the function containing an address",
+        full_desc: "Return the function that contains the given address, including start/end and size. \
+                    Useful for mapping PC/LR to a function.",
+        example: r#"{"address": "0x1000"}"#,
+        default: false,
+        keywords: &["function", "address", "pc", "lr", "containing"],
+    },
+    ToolInfo {
         name: "lookup_funcs",
         category: ToolCategory::Functions,
         short_desc: "Batch lookup multiple functions by name",
@@ -303,6 +323,16 @@ pub static TOOL_REGISTRY: &[ToolInfo] = &[
         example: r#"{"name": "main", "count": 50}"#,
         default: false,
         keywords: &["disassemble", "function", "name", "assembly"],
+    },
+    ToolInfo {
+        name: "disasm_function_at",
+        category: ToolCategory::Disassembly,
+        short_desc: "Disassemble the function containing an address",
+        full_desc: "Disassemble the function that contains the provided address. \
+                    Useful when you only have a PC/LR.",
+        example: r#"{"address": "0x1000", "count": 200}"#,
+        default: false,
+        keywords: &["disassemble", "function", "address", "pc", "lr"],
     },
 
     // === DECOMPILE ===
@@ -350,6 +380,16 @@ pub static TOOL_REGISTRY: &[ToolInfo] = &[
         example: r#"{"address": "0x1000"}"#,
         default: false,
         keywords: &["xrefs", "references", "from", "callees", "targets"],
+    },
+    ToolInfo {
+        name: "xrefs_to_string",
+        category: ToolCategory::Xrefs,
+        short_desc: "Find xrefs to strings matching a query",
+        full_desc: "Find strings that match a query and return xrefs to each match. \
+                    Useful for 'xref to cstring' workflows.",
+        example: r#"{"query": "value=%d", "limit": 10}"#,
+        default: false,
+        keywords: &["xrefs", "strings", "cstring", "references", "usage"],
     },
     ToolInfo {
         name: "xref_matrix",
@@ -523,6 +563,16 @@ pub static TOOL_REGISTRY: &[ToolInfo] = &[
         keywords: &["strings", "list", "text", "data"],
     },
     ToolInfo {
+        name: "find_string",
+        category: ToolCategory::Search,
+        short_desc: "Find strings matching a query",
+        full_desc: "Find strings that match a query (substring by default, optional exact match). \
+                    Supports pagination.",
+        example: r#"{"query": "value=%d", "limit": 20}"#,
+        default: false,
+        keywords: &["strings", "find", "search", "text"],
+    },
+    ToolInfo {
         name: "analyze_strings",
         category: ToolCategory::Search,
         short_desc: "Analyze strings with filtering",
@@ -564,6 +614,16 @@ pub static TOOL_REGISTRY: &[ToolInfo] = &[
         example: r#"{}"#,
         default: false,
         keywords: &["segments", "sections", "memory", "layout"],
+    },
+    ToolInfo {
+        name: "addr_info",
+        category: ToolCategory::Metadata,
+        short_desc: "Resolve address to segment/function/symbol",
+        full_desc: "Return address context including segment info, containing function, \
+                    and nearest named symbol.",
+        example: r#"{"address": "0x1000"}"#,
+        default: false,
+        keywords: &["address", "segment", "function", "symbol", "context"],
     },
     ToolInfo {
         name: "imports",

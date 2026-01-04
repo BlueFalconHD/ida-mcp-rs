@@ -5,7 +5,7 @@
 
 ## Discovery Workflow
 
-- `tools/list` returns a minimal core set (currently 6 tools)
+- `tools/list` returns a minimal core set (currently 7 tools)
 - `tool_catalog(query=...)` searches all tools by intent
 - `tool_help(name=...)` returns full documentation and schema
 - `enable_tools(...)` expands what `tools/list` exposes
@@ -35,6 +35,7 @@ Database open/close and discovery tools
 
 | Tool | Description |
 |------|-------------|
+| `analysis_status` | Report auto-analysis status |
 | `close_idb` | Close the current database |
 | `enable_tools` | Enable tool categories or tools in tools/list |
 | `idb_meta` | Get database metadata and summary |
@@ -50,6 +51,7 @@ List, search, and resolve functions
 | Tool | Description |
 |------|-------------|
 | `analyze_funcs` | Run auto-analysis and wait for completion |
+| `function_at` | Find the function containing an address |
 | `list_funcs` | Alias of list_functions |
 | `list_functions` | List functions with pagination and filtering |
 | `lookup_funcs` | Batch lookup multiple functions by name |
@@ -63,6 +65,7 @@ Disassemble code at addresses
 |------|-------------|
 | `disasm` | Disassemble instructions at an address |
 | `disasm_by_name` | Disassemble a function by name |
+| `disasm_function_at` | Disassemble the function containing an address |
 
 ## Decompile (`decompile`)
 
@@ -83,6 +86,7 @@ Cross-reference analysis (xrefs to/from)
 | `xrefs_from` | Find all references FROM an address |
 | `xrefs_to` | Find all references TO an address |
 | `xrefs_to_field` | Xrefs to a struct field |
+| `xrefs_to_string` | Find xrefs to strings matching a query |
 
 ## Control Flow (`control_flow`)
 
@@ -121,6 +125,7 @@ Search for bytes, strings, patterns
 | `find_bytes` | Search for byte pattern |
 | `find_insn_operands` | Find instructions by operand substring |
 | `find_insns` | Find instruction sequences by mnemonic |
+| `find_string` | Find strings matching a query |
 | `search` | Search for text or immediate values |
 | `strings` | List all strings in the database |
 
@@ -130,6 +135,7 @@ Database info, segments, imports, exports
 
 | Tool | Description |
 |------|-------------|
+| `addr_info` | Resolve address to segment/function/symbol |
 | `entrypoints` | List entry points |
 | `export_funcs` | Export functions (JSON) |
 | `exports` | List exported functions |

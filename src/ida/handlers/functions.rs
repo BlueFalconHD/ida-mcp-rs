@@ -2,7 +2,7 @@
 
 use crate::error::ToolError;
 use crate::ida::handlers::parse_address_str;
-use crate::ida::types::{FunctionInfo, FunctionListResult};
+use crate::ida::types::{FunctionInfo, FunctionListResult, FunctionRangeInfo};
 use idalib::IDB;
 use serde_json::{json, Value};
 
@@ -134,4 +134,21 @@ pub fn handle_analyze_funcs(idb: &mut Option<IDB>) -> Result<Value, ToolError> {
         "completed": completed,
         "function_count": db.function_count(),
     }))
+}
+
+pub fn handle_function_at(idb: &Option<IDB>, addr: u64) -> Result<FunctionRangeInfo, ToolError> {
+    let db = idb.as_ref().ok_or(ToolError::NoDatabaseOpen)?;
+    let func = db
+        .function_at(addr)
+        .ok_or(ToolError::FunctionNotFound(addr))?;
+    let start = func.start_address();
+    let end = func.end_address();
+    let name = func.name().unwrap_or_else(|| format!("sub_{:x}", start));
+    Ok(FunctionRangeInfo {
+        address: format!("{:#x}", start),
+        name,
+        start: format!("{:#x}", start),
+        end: format!("{:#x}", end),
+        size: func.len(),
+    })
 }

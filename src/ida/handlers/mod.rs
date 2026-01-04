@@ -1,5 +1,7 @@
 //! IDA operation handlers organized by domain.
 
+pub mod address;
+pub mod analysis;
 pub mod annotations;
 pub mod controlflow;
 pub mod database;

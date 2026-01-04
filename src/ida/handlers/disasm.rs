@@ -63,6 +63,47 @@ pub fn handle_disasm(idb: &Option<IDB>, addr: u64, count: usize) -> Result<Strin
     Ok(lines.join("\n"))
 }
 
+pub fn handle_disasm_function_at(
+    idb: &Option<IDB>,
+    addr: u64,
+    count: usize,
+) -> Result<String, ToolError> {
+    let db = idb.as_ref().ok_or(ToolError::NoDatabaseOpen)?;
+    let func = db
+        .function_at(addr)
+        .ok_or(ToolError::FunctionNotFound(addr))?;
+    let start = func.start_address();
+    let end = func.end_address();
+
+    let mut lines = Vec::new();
+    let mut current_addr: Address = start;
+
+    while current_addr < end && lines.len() < count {
+        if let Some(line) = generate_disasm_line(db, current_addr) {
+            lines.push(format!("{:#x}:\t{}", current_addr, line));
+        } else {
+            break;
+        }
+
+        if let Some(insn) = db.insn_at(current_addr) {
+            current_addr += insn.len() as u64;
+        } else if let Some(next) = db.next_head(current_addr) {
+            if next <= current_addr {
+                break;
+            }
+            current_addr = next;
+        } else {
+            break;
+        }
+    }
+
+    if lines.is_empty() {
+        return Err(ToolError::AddressOutOfRange(addr));
+    }
+
+    Ok(lines.join("\n"))
+}
+
 pub fn handle_decompile(idb: &Option<IDB>, addr: u64) -> Result<String, ToolError> {
     let db = idb.as_ref().ok_or(ToolError::NoDatabaseOpen)?;
 
