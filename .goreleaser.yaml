@@ -97,10 +97,6 @@ homebrew_casks:
       owner: blacktop
       name: homebrew-tap
       branch: main
-    commit_author:
-      name: goreleaserbot
-      email: bot@goreleaser.com
-    commit_msg_template: "Homebrew Cask update for {{ .ProjectName }} version {{ .Tag }}"
     homepage: https://github.com/blacktop/ida-mcp-rs
     description: Headless IDA Pro MCP Server for AI-powered binary analysis
     license: MIT
