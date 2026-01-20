@@ -62,7 +62,7 @@ disasm_by_name(name: "main", count: 20)
 decompile(address: "0x100000f00")
 ```
 
-The default tool list is intentionally minimal to avoid context bloat. Use `tool_catalog` to discover tools and `enable_tools` to expand what's visible.
+The default tool list includes all tools. Use `tool_catalog`/`tool_help` to discover capabilities and avoid dumping the full list into context.
 
 ## Docs
 

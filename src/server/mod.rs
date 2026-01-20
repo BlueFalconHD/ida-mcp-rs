@@ -11,8 +11,7 @@ use rmcp::{
     handler::server::{router::tool::ToolRouter, tool::ToolCallContext, wrapper::Parameters},
     model::{CallToolResult, Content, ServerCapabilities, ServerInfo, Tool},
     schemars::{schema_for, JsonSchema},
-    service::RequestContext,
-    tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler,
+    tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler,
 };
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -28,7 +27,6 @@ pub struct IdaMcpServer {
 #[derive(Clone)]
 struct ToolMux<S> {
     call_router: ToolRouter<S>,
-    enabled: Arc<std::sync::Mutex<tool_registry::EnabledTools>>,
 }
 
 impl<S> ToolMux<S>
@@ -36,57 +34,24 @@ where
     S: Send + Sync + 'static,
 {
     fn new(call_router: ToolRouter<S>) -> Self {
-        Self {
-            call_router,
-            enabled: Arc::new(std::sync::Mutex::new(tool_registry::EnabledTools::new())),
-        }
+        Self { call_router }
     }
 
     async fn call(
         &self,
         context: ToolCallContext<'_, S>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        let name = context.name().to_string();
-        let is_enabled = {
-            let enabled = match self.enabled.lock() {
-                Ok(guard) => guard,
-                Err(guard) => guard.into_inner(),
-            };
-            enabled.is_enabled(&name)
-        };
-        if !is_enabled {
-            let hint = if let Some(tool) = tool_registry::get_tool(&name) {
-                format!(
-                    "Call enable_tools(categories=[\"{}\"]) or enable_tools(tools=[\"{}\"]).",
-                    tool.category.as_str(),
-                    tool.name
-                )
-            } else {
-                "Use tool_catalog to discover available tools.".to_string()
-            };
-            return Ok(ToolError::ToolDisabled { name, hint }.to_tool_result());
-        }
         self.call_router.call(context).await
     }
 
     fn list_all(&self) -> Vec<Tool> {
-        let enabled = match self.enabled.lock() {
-            Ok(guard) => guard,
-            Err(guard) => guard.into_inner(),
-        };
         let mut tools = Vec::new();
         for info in tool_registry::all_tools() {
-            if enabled.is_enabled(info.name) {
-                if let Some(route) = self.call_router.map.get(info.name) {
-                    tools.push(route.attr.clone());
-                }
+            if let Some(route) = self.call_router.map.get(info.name) {
+                tools.push(route.attr.clone());
             }
         }
         tools
-    }
-
-    fn enabled(&self) -> &Arc<std::sync::Mutex<tool_registry::EnabledTools>> {
-        &self.enabled
     }
 }
 
@@ -288,7 +253,6 @@ impl IdaMcpServer {
         its DWARF debug info is loaded automatically. \
         Set load_debug_info=true to force loading external debug info after open \
         (optionally specify debug_info_path). \
-        Use auto_enable to enable tool categories after open (e.g., disassembly, xrefs). \
         NOTE: Opening large databases (like dyld_shared_cache) can take 30+ seconds. \
         The database stays open until close_idb is called, so you can make multiple \
         queries (list_functions, disasm, decompile, etc.) without reopening."
@@ -297,33 +261,12 @@ impl IdaMcpServer {
     async fn open_idb(
         &self,
         Parameters(req): Parameters<OpenIdbRequest>,
-        ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         debug!("Tool call: open_idb");
         // Validate path (prevent directory traversal, check extension)
         if !Self::validate_path(&req.path) {
             return Ok(ToolError::InvalidPath(req.path).to_tool_result());
         }
-
-        let auto_enable_categories = match req.auto_enable {
-            Some(v) => match Self::value_to_strings(&v) {
-                Ok(items) => {
-                    let mut categories = Vec::with_capacity(items.len());
-                    for item in items {
-                        let cat = match item.parse::<ToolCategory>() {
-                            Ok(cat) => cat,
-                            Err(_) => {
-                                return Ok(ToolError::InvalidToolCategory(item).to_tool_result())
-                            }
-                        };
-                        categories.push(cat);
-                    }
-                    categories
-                }
-                Err(e) => return Ok(e.to_tool_result()),
-            },
-            None => Vec::new(),
-        };
 
         match self
             .worker
@@ -336,68 +279,6 @@ impl IdaMcpServer {
             .await
         {
             Ok(info) => {
-                let mut auto_enabled = Vec::new();
-                if !auto_enable_categories.is_empty() {
-                    let (changed, total_enabled, enabled_categories) = {
-                        let enabled = self.tool_mux.enabled();
-                        let mut enabled = match enabled.lock() {
-                            Ok(g) => g,
-                            Err(g) => g.into_inner(),
-                        };
-
-                        for cat in &auto_enable_categories {
-                            if enabled.enable_category(*cat) {
-                                auto_enabled.push(cat.as_str());
-                            }
-                        }
-
-                        let changed = !auto_enabled.is_empty();
-                        let total_enabled = enabled.enabled_count();
-                        let mut enabled_categories: Vec<_> =
-                            enabled.enabled_categories().map(|c| c.as_str()).collect();
-                        enabled_categories.sort_unstable();
-                        (changed, total_enabled, enabled_categories)
-                    };
-
-                    if changed {
-                        let _ = ctx.peer.notify_tool_list_changed().await;
-                    }
-
-                    let mut value = match serde_json::to_value(&info) {
-                        Ok(v) => v,
-                        Err(_) => {
-                            return Ok(CallToolResult::success(vec![Content::text(format!(
-                                "{info:?}"
-                            ))]))
-                        }
-                    };
-                    if let Value::Object(map) = &mut value {
-                        map.insert(
-                            "quick_tools".to_string(),
-                            json!([
-                                "list_functions",
-                                "resolve_function",
-                                "disasm_by_name",
-                                "decompile",
-                                "xrefs_to",
-                                "strings"
-                            ]),
-                        );
-                        map.insert(
-                            "enable_hint".to_string(),
-                            json!("Call enable_tools(categories=[\"disassembly\",\"xrefs\",\"decompile\"]) to expose common analysis tools in tools/list."),
-                        );
-                        map.insert("auto_enabled_categories".to_string(), json!(auto_enabled));
-                        map.insert("enabled_categories".to_string(), json!(enabled_categories));
-                        map.insert("total_enabled".to_string(), json!(total_enabled));
-                    }
-
-                    return Ok(CallToolResult::success(vec![Content::text(
-                        serde_json::to_string_pretty(&value)
-                            .unwrap_or_else(|_| format!("{value:?}")),
-                    )]));
-                }
-
                 let mut value = match serde_json::to_value(&info) {
                     Ok(v) => v,
                     Err(_) => {
@@ -417,10 +298,6 @@ impl IdaMcpServer {
                             "xrefs_to",
                             "strings"
                         ]),
-                    );
-                    map.insert(
-                        "enable_hint".to_string(),
-                        json!("Call enable_tools(categories=[\"disassembly\",\"xrefs\",\"decompile\"]) to expose common analysis tools in tools/list."),
                     );
                 }
                 Ok(CallToolResult::success(vec![Content::text(
@@ -560,7 +437,7 @@ impl IdaMcpServer {
         Ok(CallToolResult::success(vec![Content::text(
             serde_json::to_string_pretty(&json!({
                 "categories": categories,
-                "hint": "Use tool_catalog(category='...') to list tools in a category, or tool_catalog(query='...') to search. Use enable_tools to expose categories in tools/list."
+                "hint": "Use tool_catalog(category='...') to list tools in a category, or tool_catalog(query='...') to search. tools/list already includes all tools."
             }))
             .unwrap(),
         )]))
@@ -603,95 +480,6 @@ impl IdaMcpServer {
                 .unwrap(),
             )]))
         }
-    }
-
-    #[tool(
-        description = "Enable tool categories or tools to appear in tools/list. \
-        Sends notifications/tools/list_changed when the visible tool list changes."
-    )]
-    #[instrument(skip(self))]
-    async fn enable_tools(
-        &self,
-        Parameters(req): Parameters<EnableToolsRequest>,
-        ctx: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, McpError> {
-        debug!("Tool call: enable_tools");
-
-        if req.categories.is_none() && req.tools.is_none() {
-            return Ok(
-                ToolError::InvalidParams("categories or tools required".to_string())
-                    .to_tool_result(),
-            );
-        }
-
-        let categories = match req.categories {
-            Some(v) => match Self::value_to_strings(&v) {
-                Ok(v) => v,
-                Err(e) => return Ok(e.to_tool_result()),
-            },
-            None => Vec::new(),
-        };
-        let tools = match req.tools {
-            Some(v) => match Self::value_to_strings(&v) {
-                Ok(v) => v,
-                Err(e) => return Ok(e.to_tool_result()),
-            },
-            None => Vec::new(),
-        };
-
-        let mut newly_enabled_categories = Vec::new();
-        let mut newly_enabled_tools = Vec::new();
-
-        let (changed, total_enabled, enabled_categories) = {
-            let enabled = self.tool_mux.enabled();
-            let mut enabled = match enabled.lock() {
-                Ok(g) => g,
-                Err(g) => g.into_inner(),
-            };
-
-            for cat_str in categories {
-                let category = match cat_str.parse::<ToolCategory>() {
-                    Ok(c) => c,
-                    Err(_) => return Ok(ToolError::InvalidToolCategory(cat_str).to_tool_result()),
-                };
-                if enabled.enable_category(category) {
-                    newly_enabled_categories.push(category.as_str());
-                }
-            }
-
-            for tool_str in tools {
-                let tool = match tool_registry::get_tool(&tool_str) {
-                    Some(t) => t,
-                    None => return Ok(ToolError::InvalidToolName(tool_str).to_tool_result()),
-                };
-                if enabled.enable_tool(tool.name) {
-                    newly_enabled_tools.push(tool.name);
-                }
-            }
-
-            let changed = !(newly_enabled_categories.is_empty() && newly_enabled_tools.is_empty());
-            let total_enabled = enabled.enabled_count();
-            let mut enabled_categories: Vec<_> =
-                enabled.enabled_categories().map(|c| c.as_str()).collect();
-            enabled_categories.sort_unstable();
-            (changed, total_enabled, enabled_categories)
-        };
-
-        if changed {
-            let _ = ctx.peer.notify_tool_list_changed().await;
-        }
-
-        Ok(CallToolResult::success(vec![Content::text(
-            serde_json::to_string_pretty(&json!({
-                "changed": changed,
-                "newly_enabled_categories": newly_enabled_categories,
-                "newly_enabled_tools": newly_enabled_tools,
-                "enabled_categories": enabled_categories,
-                "total_enabled": total_enabled,
-                "hint": "Call tools/list again to refresh tool list"
-            }))
-            .unwrap(),
-        )]))
     }
 
     #[tool(description = "List all functions in the database (paginated). \
@@ -2483,7 +2271,6 @@ fn tool_params_schema(name: &str) -> Option<Value> {
         "analysis_status" => Some(schema::<EmptyParams>()),
         "tool_catalog" => Some(schema::<ToolCatalogRequest>()),
         "tool_help" => Some(schema::<ToolHelpRequest>()),
-        "enable_tools" => Some(schema::<EnableToolsRequest>()),
         "idb_meta" => Some(schema::<EmptyParams>()),
 
         // Functions
@@ -2558,7 +2345,6 @@ impl ServerHandler for IdaMcpServer {
         ServerInfo {
             capabilities: ServerCapabilities::builder()
                 .enable_tools()
-                .enable_tool_list_changed()
                 .build(),
             instructions: Some(
                 "IDA Pro headless analysis server for reverse engineering binaries. \
@@ -2569,10 +2355,9 @@ impl ServerHandler for IdaMcpServer {
                  \n3. tool_help: Get full docs for a specific tool \
                  \n4. Use the discovered tools to analyze the binary \
                  \n5. close_idb: Optionally close when done \
-                 \n\nNote: tools/list is intentionally minimal; use tool_catalog to discover the full tool set, \
-                 and enable_tools to expand tools/list. Tools that are not enabled will return ToolDisabled. \
+                 \n\nNote: tools/list exposes the full tool set by default; use tool_catalog/tool_help to discover usage. \
                  \n\nTool Categories: \
-                 \n- core: open/close/discover (open_idb, close_idb, tool_catalog, tool_help, enable_tools, idb_meta) \
+                 \n- core: open/close/discover (open_idb, close_idb, tool_catalog, tool_help, idb_meta) \
                  \n- functions: list, resolve, lookup functions \
                  \n- disassembly: disasm at addresses \
                  \n- decompile: Hex-Rays pseudocode \

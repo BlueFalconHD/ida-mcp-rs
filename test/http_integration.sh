@@ -17,15 +17,11 @@ if [[ ! -x "$BIN" ]]; then
 fi
 
 tmpdir="$(mktemp -d)"
-stream_file="$tmpdir/stream.log"
 headers_file="$tmpdir/headers.log"
 body_file="$tmpdir/body.log"
 server_log="$tmpdir/server.log"
 
 cleanup() {
-  if [[ -n "${sse_pid:-}" ]]; then
-    kill "$sse_pid" >/dev/null 2>&1 || true
-  fi
   if [[ -n "${server_pid:-}" ]]; then
     kill "$server_pid" >/dev/null 2>&1 || true
   fi
@@ -75,17 +71,7 @@ curl -sS \
   -d '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' \
   "http://127.0.0.1:$PORT/" >/dev/null
 
-# Open SSE stream to receive list_changed notifications
-curl -sN \
-  -H "Accept: text/event-stream" \
-  -H "Origin: $ORIGIN" \
-  -H "Mcp-Session-Id: $session_id" \
-  "http://127.0.0.1:$PORT/" > "$stream_file" &
-sse_pid=$!
-
-sleep 0.5
-
-# tools/list should include core tools
+# tools/list should include core tools and analysis tools
 list_resp=$(curl -sS \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
@@ -94,48 +80,15 @@ list_resp=$(curl -sS \
   -d '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}' \
   "http://127.0.0.1:$PORT/")
 
-echo "$list_resp" | grep -q '"enable_tools"' || {
-  echo "tools/list missing enable_tools" >&2
+echo "$list_resp" | grep -q '"open_idb"' || {
+  echo "tools/list missing open_idb" >&2
   exit 1
 }
 
-# enable_tools for xrefs + functions
-curl -sS \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -H "Origin: $ORIGIN" \
-  -H "Mcp-Session-Id: $session_id" \
-  -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"enable_tools","arguments":{"categories":["xrefs","functions"]}}}' \
-  "http://127.0.0.1:$PORT/" >/dev/null
-
-# tools/list should now include xrefs_to
-list_resp2=$(curl -sS \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -H "Origin: $ORIGIN" \
-  -H "Mcp-Session-Id: $session_id" \
-  -d '{"jsonrpc":"2.0","id":4,"method":"tools/list","params":{}}' \
-  "http://127.0.0.1:$PORT/")
-
-echo "$list_resp2" | grep -q '"xrefs_to"' || {
-  echo "tools/list missing xrefs_to after enable_tools" >&2
+echo "$list_resp" | grep -q '"xrefs_to"' || {
+  echo "tools/list missing xrefs_to" >&2
   exit 1
 }
-
-# Wait briefly for list_changed notification
-found=0
-for _ in {1..20}; do
-  if grep -q "notifications/tools/list_changed" "$stream_file"; then
-    found=1
-    break
-  fi
-  sleep 0.1
-done
-
-if [[ "$found" -ne 1 ]]; then
-  echo "list_changed notification not observed" >&2
-  exit 1
-fi
 
 # Open mini fixture and verify functions list
 open_resp=$(curl -sS \

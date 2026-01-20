@@ -2,28 +2,9 @@ use ida_mcp::{ToolCategory, ToolInfo, TOOL_REGISTRY};
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
-fn category_order() -> Vec<ToolCategory> {
-    vec![
-        ToolCategory::Core,
-        ToolCategory::Functions,
-        ToolCategory::Disassembly,
-        ToolCategory::Decompile,
-        ToolCategory::Xrefs,
-        ToolCategory::ControlFlow,
-        ToolCategory::Memory,
-        ToolCategory::Search,
-        ToolCategory::Metadata,
-        ToolCategory::Types,
-        ToolCategory::Editing,
-        ToolCategory::Debug,
-        ToolCategory::Ui,
-        ToolCategory::Scripting,
-    ]
-}
-
 fn category_title(cat: ToolCategory) -> &'static str {
     match cat {
-        ToolCategory::Core => "Core (default)",
+        ToolCategory::Core => "Core",
         ToolCategory::Functions => "Functions",
         ToolCategory::Disassembly => "Disassembly",
         ToolCategory::Decompile => "Decompile",
@@ -66,7 +47,7 @@ fn main() {
         tools.sort_by_key(|t| t.name);
     }
 
-    let default_count = TOOL_REGISTRY.iter().filter(|t| t.default).count();
+    let tool_count = TOOL_REGISTRY.len();
 
     let mut out = String::new();
     let _ = writeln!(out, "# Tools\n");
@@ -82,7 +63,7 @@ fn main() {
     let _ = writeln!(out, "## Discovery Workflow\n");
     let _ = writeln!(
         out,
-        "- `tools/list` returns a minimal core set (currently {default_count} tools)"
+        "- `tools/list` returns the full tool set (currently {tool_count} tools)"
     );
     let _ = writeln!(
         out,
@@ -92,10 +73,7 @@ fn main() {
         out,
         "- `tool_help(name=...)` returns full documentation and schema"
     );
-    let _ = writeln!(
-        out,
-        "- `enable_tools(...)` expands what `tools/list` exposes\n"
-    );
+    let _ = writeln!(out);
 
     let _ = writeln!(
         out,
@@ -110,26 +88,7 @@ fn main() {
         "exists and no .i64 is present, its DWARF debug info is loaded automatically.\n"
     );
 
-    let _ = writeln!(out, "## Enable Tools\n");
-    let _ = writeln!(out, "Enable by category:");
-    let _ = writeln!(
-        out,
-        "```json\n{{\"categories\": [\"xrefs\", \"control_flow\"]}}\n```"
-    );
-    let _ = writeln!(out);
-    let _ = writeln!(out, "Enable specific tools:");
-    let _ = writeln!(
-        out,
-        "```json\n{{\"tools\": [\"callgraph\", \"find_paths\"]}}\n```"
-    );
-    let _ = writeln!(out);
-    let _ = writeln!(
-        out,
-        "After enabling, `tools/list` returns the expanded set and emits"
-    );
-    let _ = writeln!(out, "`notifications/tools/list_changed`.\n");
-
-    for cat in category_order() {
+    for &cat in ToolCategory::all() {
         let Some(tools) = groups.get(&cat) else {
             continue;
         };

@@ -57,9 +57,6 @@ pub enum ToolError {
     #[error("Not supported: {0}")]
     NotSupported(String),
 
-    #[error("Tool '{name}' is disabled. {hint}")]
-    ToolDisabled { name: String, hint: String },
-
     #[error("Worker channel closed")]
     WorkerClosed,
 }

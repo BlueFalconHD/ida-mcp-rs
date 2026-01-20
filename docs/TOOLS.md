@@ -5,31 +5,15 @@
 
 ## Discovery Workflow
 
-- `tools/list` returns a minimal core set (currently 7 tools)
+- `tools/list` returns the full tool set (currently 66 tools)
 - `tool_catalog(query=...)` searches all tools by intent
 - `tool_help(name=...)` returns full documentation and schema
-- `enable_tools(...)` expands what `tools/list` exposes
 
 Note: `open_idb` accepts .i64/.idb or raw binaries (Mach-O/ELF/PE). Raw binaries are
 auto-analyzed and saved as a .i64 alongside the input. If a sibling .dSYM
 exists and no .i64 is present, its DWARF debug info is loaded automatically.
 
-## Enable Tools
-
-Enable by category:
-```json
-{"categories": ["xrefs", "control_flow"]}
-```
-
-Enable specific tools:
-```json
-{"tools": ["callgraph", "find_paths"]}
-```
-
-After enabling, `tools/list` returns the expanded set and emits
-`notifications/tools/list_changed`.
-
-## Core (default) (`core`)
+## Core (`core`)
 
 Database open/close and discovery tools
 
@@ -37,7 +21,6 @@ Database open/close and discovery tools
 |------|-------------|
 | `analysis_status` | Report auto-analysis status |
 | `close_idb` | Close the current database |
-| `enable_tools` | Enable tool categories or tools in tools/list |
 | `idb_meta` | Get database metadata and summary |
 | `load_debug_info` | Load external debug info (e.g., dSYM/DWARF) |
 | `open_idb` | Open an IDA database or raw binary |

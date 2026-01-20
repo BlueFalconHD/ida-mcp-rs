@@ -14,10 +14,6 @@ pub struct OpenIdbRequest {
     #[serde(alias = "load_dsym")]
     pub load_debug_info: Option<bool>,
     #[schemars(
-        description = "Auto-enable tool categories after open (e.g., [\"disassembly\",\"xrefs\"])."
-    )]
-    pub auto_enable: Option<Value>,
-    #[schemars(
         description = "Optional debug info path (dSYM DWARF). If omitted, tries sibling .dSYM"
     )]
     #[serde(alias = "dsym_path")]
@@ -633,14 +629,4 @@ pub struct ToolCatalogRequest {
 pub struct ToolHelpRequest {
     #[schemars(description = "Name of the tool to get help for")]
     pub name: String,
-}
-
-#[derive(Debug, Deserialize, JsonSchema)]
-pub struct EnableToolsRequest {
-    #[schemars(description = "Tool categories to enable (string or array)")]
-    #[serde(alias = "category", alias = "categories")]
-    pub categories: Option<Value>,
-    #[schemars(description = "Specific tool names to enable (string or array)")]
-    #[serde(alias = "tool", alias = "tools")]
-    pub tools: Option<Value>,
 }

@@ -20,9 +20,7 @@ make test-http  # HTTP/SSE integration test
 
 **HTTP test** (`make test-http`)
 - Streamable HTTP transport with SSE
-- `tools/list` returns minimal core tools
-- `enable_tools` expands the visible tool list
-- `notifications/tools/list_changed` emitted over SSE
+- `tools/list` returns the full tool list
 - Database operations work over HTTP (`open_idb`, `list_functions`, `close_idb`)
 
 ## Test fixture

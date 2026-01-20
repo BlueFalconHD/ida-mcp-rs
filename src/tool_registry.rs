@@ -1,11 +1,9 @@
 //! Tool registry for dynamic tool discovery.
 //!
-//! Implements the "minimal default tools + discovery" pattern recommended by MCP best practices.
-//! Only a few high-level tools are exposed by default; others are discovered via `tool_catalog`.
-//! Use `enable_tools` to expand the tools visible in tools/list.
+//! All tools are exposed in tools/list by default to support MCP clients that only
+//! register tools at connection time. `tool_catalog` is still recommended for discovery.
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::str::FromStr;
 
 /// Tool category for grouping related tools
@@ -137,7 +135,7 @@ pub struct ToolInfo {
     pub full_desc: &'static str,
     /// Example invocation (JSON)
     pub example: &'static str,
-    /// Whether this tool is in the default (minimal) set
+    /// Whether this tool is in the default (core) set
     pub default: bool,
     /// Keywords for semantic search
     pub keywords: &'static [&'static str],
@@ -215,17 +213,6 @@ pub static TOOL_REGISTRY: &[ToolInfo] = &[
         example: r#"{"name": "list_functions"}"#,
         default: true,
         keywords: &["help", "docs", "documentation", "schema", "usage"],
-    },
-    ToolInfo {
-        name: "enable_tools",
-        category: ToolCategory::Core,
-        short_desc: "Enable tool categories or tools in tools/list",
-        full_desc: "Enable additional tool categories or specific tools to appear in tools/list. \
-                    This does not affect tool availability; it only controls what tools/list exposes. \
-                    Triggers notifications/tools/list_changed when the visible list changes.",
-        example: r#"{"categories": ["xrefs", "control_flow"]}"#,
-        default: true,
-        keywords: &["enable", "tools", "categories", "list_changed"],
     },
     ToolInfo {
         name: "idb_meta",
@@ -830,7 +817,7 @@ pub static TOOL_REGISTRY: &[ToolInfo] = &[
     },
 ];
 
-/// Get tools in the default (minimal) set
+/// Get tools in the default (core) set
 pub fn default_tools() -> impl Iterator<Item = &'static ToolInfo> {
     TOOL_REGISTRY.iter().filter(|t| t.default)
 }
@@ -916,70 +903,17 @@ pub fn search_tools(query: &str, limit: usize) -> Vec<(&'static ToolInfo, Vec<&'
         .collect()
 }
 
-/// Track enabled tool categories for dynamic tool list
-#[derive(Debug, Default)]
-pub struct EnabledTools {
-    enabled_categories: HashSet<ToolCategory>,
-    enabled_tools: HashSet<&'static str>,
-}
-
-impl EnabledTools {
-    pub fn new() -> Self {
-        let mut s = Self::default();
-        // Core tools are always enabled
-        s.enabled_categories.insert(ToolCategory::Core);
-        for tool in default_tools() {
-            s.enabled_tools.insert(tool.name);
-        }
-        s
-    }
-
-    pub fn enable_category(&mut self, category: ToolCategory) -> bool {
-        if self.enabled_categories.insert(category) {
-            for tool in tools_by_category(category) {
-                self.enabled_tools.insert(tool.name);
-            }
-            true
-        } else {
-            false
-        }
-    }
-
-    pub fn enable_tool(&mut self, name: &'static str) -> bool {
-        self.enabled_tools.insert(name)
-    }
-
-    pub fn is_enabled(&self, name: &str) -> bool {
-        self.enabled_tools.contains(name)
-    }
-
-    pub fn enabled_tools(&self) -> impl Iterator<Item = &'static ToolInfo> + '_ {
-        TOOL_REGISTRY
-            .iter()
-            .filter(|t| self.enabled_tools.contains(t.name))
-    }
-
-    pub fn enabled_categories(&self) -> impl Iterator<Item = ToolCategory> + '_ {
-        self.enabled_categories.iter().copied()
-    }
-
-    pub fn enabled_count(&self) -> usize {
-        self.enabled_tools.len()
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::tool_registry::*;
 
     #[test]
     fn test_default_tools() {
         let defaults: Vec<_> = default_tools().collect();
-        assert!(defaults.len() <= 7, "Default tools should be minimal");
         assert!(defaults.iter().any(|t| t.name == "open_idb"));
         assert!(defaults.iter().any(|t| t.name == "tool_catalog"));
         assert!(defaults.iter().any(|t| t.name == "tool_help"));
-        assert!(defaults.iter().any(|t| t.name == "enable_tools"));
+        assert!(defaults.iter().any(|t| t.name == "idb_meta"));
     }
 
     #[test]

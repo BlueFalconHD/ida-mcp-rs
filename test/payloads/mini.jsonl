@@ -3,7 +3,7 @@
 {"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"tool_catalog","arguments":{"query":"decompile"}}}
 {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"tool_help","arguments":{"name":"disasm"}}}
-{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"open_idb","arguments":{"path":"fixtures/mini","load_debug_info":true,"auto_enable":["functions","disassembly","search","editing","memory","types","xrefs","metadata"]}}}
+{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"open_idb","arguments":{"path":"fixtures/mini","load_debug_info":true}}}
 {"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"idb_meta","arguments":{}}}
 {"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"segments","arguments":{}}}
 {"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"list_functions","arguments":{"limit":20}}}
